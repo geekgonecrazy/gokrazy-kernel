@@ -18,6 +18,28 @@ const ubootTS = 1676844210
 
 var latest = "https://github.com/u-boot/u-boot/archive/" + ubootRev + ".zip"
 
+var atf = "https://github.com/ARM-software/arm-trusted-firmware/archive/refs/tags/lts-v2.8.0.zip"
+
+func downloadArmTrustedFirmware() error {
+	out, err := os.Create(filepath.Base(atf))
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	resp, err := http.Get(atf)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if got, want := resp.StatusCode, http.StatusOK; got != want {
+		return fmt.Errorf("unexpected HTTP status code for %s: got %d, want %d", atf, got, want)
+	}
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		return err
+	}
+	return out.Close()
+}
+
 func downloadUBoot() error {
 	out, err := os.Create(filepath.Base(latest))
 	if err != nil {
@@ -64,9 +86,13 @@ func applyPatches(srcdir string) error {
 	return nil
 }
 
-func compile() error {
+func compile(atfSrcDir string) error {
+
+	atfBin := fmt.Sprintf("BL31=/usr/src/%s/build/sun50i_h6/debug/bl31.bin", atfSrcDir)
+
+	log.Println("atfBin", atfBin)
 	//TODO: this should really be configurable right?
-	defconfig := exec.Command("make", "ARCH=arm", "tanix_tx6_defconfig")
+	defconfig := exec.Command("make", "ARCH=arm", atfBin, "tanix_tx6_defconfig")
 	defconfig.Stdout = os.Stdout
 	defconfig.Stderr = os.Stderr
 	if err := defconfig.Run(); err != nil {
@@ -86,7 +112,25 @@ func compile() error {
 		return err
 	}
 
-	make := exec.Command("make", "u-boot.bin", "-j"+strconv.Itoa(runtime.NumCPU()))
+	make := exec.Command("make", atfBin, "-j"+strconv.Itoa(runtime.NumCPU()))
+	make.Env = append(os.Environ(),
+		"SCP=/dev/null",
+		"ARCH=arm",
+		"CROSS_COMPILE=aarch64-linux-gnu-",
+		"SOURCE_DATE_EPOCH="+strconv.Itoa(ubootTS),
+	)
+	make.Stdout = os.Stdout
+	make.Stderr = os.Stderr
+	if err := make.Run(); err != nil {
+		return fmt.Errorf("make: %v", err)
+	}
+
+	return nil
+}
+
+// make CROSS_COMPILE=aarch64-linux-gnu- PLAT=<platform> DEBUG=1 bl31
+func compileAtf() error {
+	make := exec.Command("make", "PLAT=sun50i_h6", "DEBUG=1", "bl31", "-j"+strconv.Itoa(runtime.NumCPU()))
 	make.Env = append(os.Environ(),
 		"ARCH=arm",
 		"CROSS_COMPILE=aarch64-linux-gnu-",
@@ -145,6 +189,34 @@ func copyFile(dest, src string) error {
 }
 
 func main() {
+	log.Printf("downloading arm trusted firmware source: %s", atf)
+	if err := downloadArmTrustedFirmware(); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("unpacking atf source")
+	untarAtf := exec.Command("unzip", "-q", filepath.Base(atf))
+	untarAtf.Stdout = os.Stdout
+	untarAtf.Stderr = os.Stderr
+	if err := untarAtf.Run(); err != nil {
+		log.Fatalf("untar: %v", err)
+	}
+
+	atfSrcdir := "arm-trusted-firmware-" + strings.TrimSuffix(filepath.Base(atf), ".zip")
+
+	if err := os.Chdir(atfSrcdir); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("compiling atf")
+	if err := compileAtf(); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := os.Chdir(".."); err != nil {
+		log.Fatal(err)
+	}
+
 	log.Printf("downloading uboot source: %s", latest)
 	if err := downloadUBoot(); err != nil {
 		log.Fatal(err)
@@ -177,7 +249,7 @@ func main() {
 	}
 
 	log.Printf("compiling uboot")
-	if err := compile(); err != nil {
+	if err := compile(atfSrcdir); err != nil {
 		log.Fatal(err)
 	}
 
@@ -187,6 +259,10 @@ func main() {
 	}
 
 	if err := copyFile("/tmp/buildresult/u-boot.bin", "u-boot.bin"); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := copyFile("/tmp/buildresult/u-boot-sunxi-with-spl.bin", "u-boot-sunxi-with-spl.bin"); err != nil {
 		log.Fatal(err)
 	}
 

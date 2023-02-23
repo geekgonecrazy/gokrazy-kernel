@@ -1138,7 +1138,7 @@ func compile() error {
 		"KBUILD_BUILD_HOST=docker",
 		"KBUILD_BUILD_TIMESTAMP=Wed Mar  1 20:57:29 UTC 2017",
 	)
-	make := exec.Command("make", "Image.gz", "dtbs", "modules", "-j"+strconv.Itoa(runtime.NumCPU()))
+	make := exec.Command("make", "Image", "dtbs", "modules", "-j"+strconv.Itoa(runtime.NumCPU()))
 	make.Env = env
 	make.Stdout = os.Stdout
 	make.Stderr = os.Stderr

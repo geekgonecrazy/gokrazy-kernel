@@ -17,7 +17,7 @@ import (
 const dockerFileContents = `
 FROM debian:bullseye
 
-RUN apt-get update && apt-get install -y crossbuild-essential-armhf crossbuild-essential-arm64 python3 python3-setuptools python3-dev swig bc libssl-dev bison flex unzip
+RUN apt-get update && apt-get install -y crossbuild-essential-armhf git crossbuild-essential-arm64 python3 python3-setuptools python3-dev swig bc libssl-dev bison flex unzip
 
 COPY gokr-build-uboot /usr/bin/gokr-build-uboot
 {{- range $idx, $path := .Patches }}
@@ -155,6 +155,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	ubootSplPath, err := find("u-boot-sunxi-with-spl.bin")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	bootScrPath, err := find("boot.scr")
 	if err != nil {
 		log.Fatal(err)
@@ -234,6 +239,10 @@ func main() {
 	}
 
 	if err := copyFile(ubootPath, filepath.Join(tmp, "u-boot.bin")); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := copyFile(ubootSplPath, filepath.Join(tmp, "u-boot-sunxi-with-spl.bin")); err != nil {
 		log.Fatal(err)
 	}
 

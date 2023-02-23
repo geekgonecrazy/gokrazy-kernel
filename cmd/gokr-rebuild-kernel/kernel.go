@@ -183,6 +183,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	dtbh6Path, err := find("sun50i-h6-tanix-tx6.dtb")
+	if err != nil {
+		log.Fatal(err)
+	}
 	libPath, err := find("lib")
 	if err != nil {
 		log.Fatal(err)
@@ -282,6 +286,10 @@ func main() {
 	}
 
 	if err := copyFile(dtb4Path, filepath.Join(tmp, "bcm2711-rpi-4-b.dtb")); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := copyFile(dtbh6Path, filepath.Join(tmp, "sun50i-h6-tanix-tx6.dtb")); err != nil {
 		log.Fatal(err)
 	}
 
